@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<!-- Required meta tags -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+<!-- Bootstrap CSS -->
+<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css" integrity="sha384-HSMxcRTRxnN+Bdg0JdbxYKrThecOKuH5zCYotlSAcp1+c8xmyTe9GYg1l9a69psu" crossorigin="anonymous">
+<title>Medrone</title>
+
+<script type="text/javascript" src="http://static.robotwebtools.org/roslibjs/current/roslib.min.js"></script>
+
+<script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
+
+<script type="text/javascript" type="text/javascript">
+
+  var med_info = [
+    ["Halil Eryalçın",null, null, null,null, null, null,"110110045","B+","Lieutenant","/home/ofd/catkin_ws/src/medrone_gui/src/halil-rbb.png"],   
+    ["Harun Çalışkan",null, null, null,null, null, null,"110110046","A+","Sergeant","/home/ofd/catkin_ws/src/medrone_gui/src/harun-rbb.png"]
+  ]; //
+  var seconds_med = [0,0], minutes_med = [0,0], hours_med = [0,0],seconds_dr = 0, minutes_dr = 0, hours_dr = 0;
+  var index=0;
+
+  var ros = new ROSLIB.Ros({
+    url : 'ws://localhost:9090'
+  });
+
+  var button_publisher = new ROSLIB.Topic({
+    ros : ros,
+    name : "/medrone/button_states",
+    messageType : 'capstone/button_deneme'
+  });
+
+  var dr13 = new ROSLIB.Topic({
+    ros : ros,
+    name : '/medrone/dr13',
+    messageType : 'capstone/header_dr13'
+  });
+  var cargoOne=3;
+  var cargoTwo=3;
+  var servoStatus = new ROSLIB.Topic({
+    ros : ros,
+    name : '/medrone/servoStatus',
+    messageType : 'std_msgs/Int8'
+  });
+  servoStatus.subscribe(function(m) {
+    if(m.data==0 && cargoOne!=0 && cargoTwo!=0){
+      document.getElementById("servoStatus").innerHTML ="Dropping the delivery...";
+    }else if(m.data==1 && cargoOne!=0 && cargoTwo!=0){
+      document.getElementById("servoStatus").innerHTML ="Ready for the next delivery...";
+    }else if(m.data==3 && cargoOne!=0 && cargoTwo!=0){
+      document.getElementById("servoStatus").innerHTML ="No information yet...";
+    }if(cargoOne==0 || cargoTwo==0){
+      document.getElementById("servoStatus").innerHTML ="Reload the cargo...";
+    }
+  });
+  var payloadLeftOne = new ROSLIB.Topic({
+    ros : ros,
+    name : '/medrone/payloadLeftOne',
+    messageType : 'std_msgs/Int8'
+  });
+  payloadLeftOne.subscribe(function(m) {
+    cargoOne=m.data;
+    if(m.data==4){
+      document.getElementById("payloadLeftOne").innerHTML ="No information yet...";
+    }else{
+      document.getElementById("payloadLeftOne").innerHTML =m.data;
+    }
+  });
+  var payloadLeftTwo = new ROSLIB.Topic({
+    ros : ros,
+    name : '/medrone/payloadLeftTwo',
+    messageType : 'std_msgs/Int8'
+  });
+  payloadLeftTwo.subscribe(function(m) {
+    cargoTwo=m.data;
+    if(m.data==4){
+      document.getElementById("payloadLeftTwo").innerHTML ="No information yet...";
+    }else{
+      document.getElementById("payloadLeftTwo").innerHTML =m.data;
+    }
+  });
+
+  var drone_latitude;
+  dr13.subscribe(function(m) {
+    var elem = document.getElementById("myBar");
+    elem.style.width = m.ms + '%';
+    elem.innerHTML = m.ms + '%';
+    document.getElementById("drone_altitude").innerHTML = m.alt;
+    document.getElementById("drone_ground_speed").innerHTML = m.gs;
+    drone_latitude=m.lat;
+    drone_longitude=m.lon;
+    drone_id=m.id;
+    refereshDroneMap();
+    seconds_dr = 0, minutes_dr = 0, hours_dr = 0;
+    //document.getElementById("drone_drone_id").innerHTML = m.id;
+  });
+  var md11 = new ROSLIB.Topic({
+    ros : ros,
+    name : '/medrone/md11',
+    messageType : 'capstone/header_md11'
+  });
+
+  md11.subscribe(function(m){
+    med_info[parseInt(m.id)][1]=m.hb;
+    med_info[parseInt(m.id)][2]=m.spo;
+    med_info[parseInt(m.id)][3]=m.lat;
+    med_info[parseInt(m.id)][4]=m.lon;
+    med_info[parseInt(m.id)][5]=m.alt;
+    med_info[parseInt(m.id)][6]=m.but;
+    console.log(med_info);
+    seconds_med[m.id] = 0, minutes_med[m.id] = 0, hours_med[m.id] = 0;
+    data_update();
+    addMarker(parseInt(m.id));
+  });
+  
+  $( document ).ready(function() {
+    data_update();
+  });
+
+  //$("#image").attr("src","second.jpg");
+
+  function buttonClick(rtl,land,start_mission,stop_mission,photo) {
+    var buttonState = new ROSLIB.Message({
+      rtl:rtl,land:land,start_mission:start_mission,stop_mission:stop_mission,photo:photo
+    });
+    button_publisher.publish(buttonState);
+    console.log("sdfsd");
+  }
+
+  ros.on('connection', function() {
+    document.getElementById("status").innerHTML = "Connected";
+  });
+
+  ros.on('error', function(error) {
+    document.getElementById("status").innerHTML = "Error";
+  });
+
+  ros.on('close', function() {
+    document.getElementById("status").innerHTML = "Closed";
+  });
+  
+  function data_update(){
+    var x = document.getElementById("medicalDeviceFormControl").selectedIndex; 
+    var y = document.getElementsByTagName("option")[x].value;
+    index=parseInt(y);
+    document.getElementById("soldierName").innerHTML = med_info[index][0];
+    document.getElementById("soldierID").innerHTML = med_info[index][7];
+    document.getElementById("soldierBlood").innerHTML = med_info[index][8];
+    document.getElementById("soldierRank").innerHTML = med_info[index][9];
+    document.getElementById("med_hb").innerHTML = med_info[index][1];
+    document.getElementById("med_spo").innerHTML = med_info[index][2];
+    document.getElementById("soldierImage").src = med_info[index][10];
+    document.getElementById("med_last_update").innerHTML = hours_med[index]+":"+minutes_med[index]+":"+seconds_med[index];
+  }
+  
+  function addTimer() {
+    for(i=0;i<med_info.length;i++){
+      seconds_med[i]++;
+      if (seconds_med[i] >= 60) {
+          seconds_med[i] = 0;
+          minutes_med[i]++;
+          if (minutes_med[i] >= 60) {
+              minutes_med[i] = 0;
+              hours_med[i]++;
+          }
+      }
+      document.getElementById("med_last_update").innerHTML = hours_med[index]+":"+minutes_med[index]+":"+seconds_med[index];
+    }
+    seconds_dr++;
+    if (seconds_dr >= 60) {
+        seconds_dr = 0;
+        minutes_dr++;
+        if (minutes_dr >= 60) {
+            minutes_dr = 0;
+            hours_dr++;
+        }
+    }
+    document.getElementById("dr_last_update").innerHTML = hours_dr+":"+minutes_dr+":"+seconds_dr;    
+    timer();
+  }
+  function timer() {
+      t = setTimeout(addTimer, 1000);
+  }
+  timer();
+  
+</script>
+
+
+
+</head>
+
+<body>
+    
+  <nav class="navbar navbar-default">
+      <div class="container-fluid">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+          <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+          </button>
+          <a class="navbar-brand" href="#">Medrone</a>
+        </div>
+    
+        <!-- Collect the nav links, forms, and other content for toggling -->
+        <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
+          <ul class="nav navbar-nav">
+            <li class="active"><a href="#">Dashboard <span class="sr-only">(current)</span></a></li>
+            <li><a href="#">History</a></li>
+          </ul>
+          <ul class="nav navbar-nav navbar-right">
+              <li class="list-group-item">
+                  <span style="background-color:#F54C28" class="badge"><span class="glyphicon glyphicon-off" aria-hidden="true"></span> </span>
+                  <span id="status"></span> 
+              </li>
+          </ul>
+        </div><!-- /.navbar-collapse -->
+      </div><!-- /.container-fluid -->
+    </nav>
+    <div class="row " style="margin: 10px;">
+        <div class="bg-info" style="border-radius: 10px; padding:8px">
+          <h2 align="center" style="color:#333">Mission Progress</h2>
+          <div class="progress">
+              <div class="progress-bar" role="progressbar" id="myBar" aria-valuenow="25" aria-valuemin="0" aria-valuemax="100">0%</div>
+          </div>
+        </div>
+    </div>
+    <div class="row " style="margin: 10px;">
+      <div class="col-lg-3">
+          <div style="background-color:#eee; border-radius: 10px; padding:8px">
+              <h2>Soldier Information</h2>
+              <div class="form-group">
+                  <label for="exampleFormControlSelect1">Select Soldier</label>
+                  <select class="form-control" id="medicalDeviceFormControl" onchange="data_update()">
+                      <option value="0" onclick="data_update()">Halil Eryalçın</option>
+                      <option value="1" onclick="data_update()">Harun Çalışkan</option>
+                  </select> 
+              </div>
+              <ul class="list-group">
+                      <li class="list-group-item">
+                              <span class="badge"><span class="glyphicon glyphicon-heart" aria-hidden="true"></span> <b><span id="med_hb"></span> bps</b>    </span>
+                              Heartbeat:
+                      </li>
+                      <li class="list-group-item">
+                              <span class="badge"><span class="glyphicon glyphicon-tint" aria-hidden="true"></span> <b><span id="med_spo"></span> %</b>    </span>
+                              Spo2:
+                      </li>
+                      <li class="list-group-item">
+                              <span class="badge"><span class="glyphicon glyphicon-time" aria-hidden="true"></span> <b><span id="med_last_update"></span></b>    </span>
+                              Last update:
+                      </li>
+              </ul>
+              <ul class="list-group" style="text-align: center;">
+                <img id="soldierImage" class="img-responsive img-thumbnail hidden-xs" src="/home/ofd/catkin_ws/src/medrone_gui/src/halil-rbb.png">
+              </ul>
+              
+              <ul class="list-group">
+                <li class="list-group-item">
+                  <span class="badge"><span  aria-hidden="true"></span> <b><span id="soldierName"></span></b>    </span>
+                  Name and Surname:              
+                </li>
+                <li class="list-group-item">
+                  <span class="badge"><span  aria-hidden="true"></span> <b><span id="soldierID"></b>   </span>
+                        ID:
+                        
+                </li>
+                <li class="list-group-item">
+                  <span class="badge"><span  aria-hidden="true"></span> <b><span id="soldierBlood"></span></b>     </span>
+                        Blood Type:
+                        
+                </li>
+                <li class="list-group-item">
+                  <span class="badge"><span  aria-hidden="true"></span> <b><span id="soldierRank"></span></b>     </span>
+                        Rank:
+                        
+                </li>
+              </ul>
+              
+          </div>
+      </div>
+      <div class="col-lg-3">
+          <div style="background-color:#eee; border-radius: 10px;padding:8px">
+              <h2>Drone Information</h2>
+              <div class="form-group">
+                      <label for="exampleFormControlSelect1">Select Drone</label>
+                      <select class="form-control" id="exampleFormControlSelect1">
+                          <option>1</option>
+                          <option>2</option>
+                          <option>3</option>
+                          <option>4</option>
+                          <option>5</option>
+                      </select>
+              </div>
+              <ul class="list-group">
+                      <li class="list-group-item">
+                          <span class="badge"><span class="glyphicon glyphicon-dashboard" aria-hidden="true"></span> <b><span id="drone_ground_speed"></span> m/s</b>    </span>
+                          Ground Speed:
+                      </li>
+                      <li class="list-group-item">
+                          <span class="badge"><span class="glyphicon glyphicon-sort-by-attributes-alt" aria-hidden="true"></span> <b><span id="drone_altitude"></span>m</b>    </span>
+                          Altitude:
+                      </li>
+                      <li class="list-group-item">
+                          <span class="badge"><span class="glyphicon glyphicon-time" aria-hidden="true"></span> <b><span id="dr_last_update"></span></b>    </span>
+                          Last update:
+                      </li>
+                      <li class="list-group-item">
+                        <span class="badge"><span  aria-hidden="true"></span> <b><span id="servoStatus"></span></b>    </span>
+                        Servo Status:
+                      </li>
+                      <li class="list-group-item">
+                        <span class="badge"><span  aria-hidden="true"></span> <b><span id="payloadLeftOne"></span></b>    </span>
+                        Payload Count - Item 1:
+                      </li>
+                      <li class="list-group-item">
+                        <span class="badge"><span  aria-hidden="true"></span> <b><span id="payloadLeftTwo"></span></b>    </span>
+                        Payload Count - Item 2:
+                      </li>
+              </ul>
+              <ul class="list-group" style="text-align: center;">
+                <img id="droneImage" class="img-responsive img-thumbnail hidden-xs" src="/home/ofd/catkin_ws/src/medrone_gui/src/drone.jpeg">
+              </ul>
+              <ul class="list-group">
+                <li class="list-group-item">
+                  <span class="badge"><span  aria-hidden="true"></span><b>Türk Kuşu</b>     </span>
+                        Name: 
+                  
+                </li>
+                <li class="list-group-item">
+                  <span class="badge"><span  aria-hidden="true"></span><b>1</b>   </span>
+                        ID: 
+                        
+                </li>
+                <li class="list-group-item">
+                  <span class="badge"><span  aria-hidden="true"></span><b>3.4kg</b>     </span>
+                        Weight:
+                        
+                </li>
+                <li class="list-group-item">
+                  <span class="badge"><span  aria-hidden="true"></span><b>Medicine</b>     </span>
+                  Type of Load:
+                  
+                </li>
+              </ul>
+          </div>
+      </div>
+      <div class="col-lg-6">
+        <div style="background-color:#eee; border-radius: 10px;padding:4px">
+            <style>
+              /* Set the size of the div element that contains the map */
+              #map {
+                height: 400px;  /* The height is 400 pixels */
+                width: 100%;  /* The width is the width of the web page */
+              }
+            </style>
+            <h3>Device Locations</h3>
+            <!--The div element for the map -->
+            <div id="map"></div>
+        </div>
+        <div style="margin:50px">
+          <div style="width: 100%; text-align: center;">
+            <div class="btn-group btn-group-lg" role="group">
+              <button type="button" class="btn btn-danger" onclick="buttonClick(1,0,0,0,0)">RTL</button>
+              <button type="button" class="btn btn-danger" onclick="buttonClick(0,1,0,0,0)">LAND</button>
+              <button type="button" class="btn btn-primary" onclick="buttonClick(0,0,1,0,0)">START MISSION</button>
+            </div>
+          </div> 
+        </div>
+      </div>
+    </div>
+    
+    
+    
+
+
+    <script>
+        // Initialize and add the map
+        window.onload = function () {
+            initMap();
+        };
+        var map;
+        var drone_marker,md0_marker,md1_marker;
+        var uluru = {lat: 38.742269, lng: 35.478831};
+        function initMap() {
+          // The map, centered at Uluru
+          map = new google.maps.Map(
+              document.getElementById('map'), {zoom: 17, center: uluru, mapTypeId: google.maps.MapTypeId.ROADMAP});
+          // The marker, positioned at Uluru
+          drone_marker = new google.maps.Marker({position: uluru, map: map, label:"Drone"});
+        }
+        function refereshDroneMap(){
+          uluru = {lat: drone_latitude, lng: drone_longitude};
+          if (drone_marker != null) {
+            drone_marker.setMap(null);
+          }
+          drone_marker = new google.maps.Marker({position: uluru, map: map, label:"Drone"});
+          var infoWindow = new google.maps.InfoWindow();
+            infoWindow.setContent("<div style = 'width:50px;min-height:10px'>"+"Drone"+drone_id+ "</div>");
+            infoWindow.open(map, drone_marker);
+        }
+        function addMarker(i){
+          if(i==0){
+            uluru_md0 = {lat: parseFloat(med_info[i][3]), lng: parseFloat(med_info[i][4])};
+            if (md0_marker != null) {
+              md0_marker.setMap(null);
+            }
+            md0_marker = new google.maps.Marker({position: uluru_md0, map: map, label:"MD0", icon: {url: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png"}});
+            var infoWindow = new google.maps.InfoWindow();
+              infoWindow.setContent("<div style = 'width:50px;min-height:10px'>"+"Halil Eryalçın"+ "</div>");
+              infoWindow.open(map, md0_marker);
+          }else if(i==1){
+            uluru_md1 = {lat: parseFloat(med_info[i][3]), lng: parseFloat(med_info[i][4])};
+            if (md1_marker != null) {
+              md1_marker.setMap(null);
+            }
+            md1_marker = new google.maps.Marker({position: uluru_md1, map: map, label:"MD1", icon: {url: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png"}});
+            var infoWindow = new google.maps.InfoWindow();
+              infoWindow.setContent("<div style = 'width:50px;min-height:10px'>"+"Harun Çalışkan"+ "</div>");
+              infoWindow.open(map, md1_marker);
+          }
+        }
+    </script>
+  
+  <!-- Optional JavaScript -->
+  <!-- jQuery first, then Popper.js, then Bootstrap JS -->
+  <script async defer
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDA7FBDoHid_PjX2xE3Dd3wmjALhgZk_LQ&callback=initMap">
+    
+  </script>
+  <script src="https://stackpath.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js" integrity="sha384-aJ21OjlMXNL5UyIl/XNwTMqvzeRMZH2w8c5cRVpzpU8Y5bApTppSuUkhZXN0VxHd" crossorigin="anonymous"></script>
+</body>
+</html>
